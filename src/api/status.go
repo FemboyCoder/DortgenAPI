@@ -1,7 +1,9 @@
 package api
 
 import (
+	"DortgenAPI/src/database"
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -11,8 +13,16 @@ type StatusResponse struct {
 
 var StatusFunc = func(writer http.ResponseWriter, request *http.Request) {
 	// get stock amount
+
+	stock, err := database.Connection.GetStockAmount()
+	if err != nil {
+		log.Println("Error getting stock amount: " + err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	response := StatusResponse{
-		Stock: 100,
+		Stock: stock,
 	}
 
 	responsePayload, err := json.Marshal(response)

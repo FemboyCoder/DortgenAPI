@@ -3,9 +3,8 @@ package api
 import (
 	"DortgenAPI/src/database"
 	"encoding/json"
-	"errors"
+	"log"
 	"net/http"
-	"time"
 )
 
 type ValidateResponse struct {
@@ -19,11 +18,11 @@ type ValidateData struct {
 }
 
 var ValidateFunc = func(writer http.ResponseWriter, request *http.Request) {
-	// get key from query string
+
+	// get the key from query string
 	key := request.URL.Query().Get("key")
 	// check if key is set
 	if key == "" {
-		// if not, return an error
 		response := ValidateResponse{
 			Success: false,
 			Data: ValidateData{
@@ -32,16 +31,19 @@ var ValidateFunc = func(writer http.ResponseWriter, request *http.Request) {
 		}
 		responsePayload, err := json.Marshal(response)
 		if err != nil {
+			log.Println("error marshalling validate response (key not set):", err)
 			writer.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		writer.WriteHeader(http.StatusOK)
+		writer.WriteHeader(http.StatusBadRequest)
 		_, err = writer.Write(responsePayload)
 		return
 	}
 
-	valid, err := ValidateKey(key)
+	// validate the key
+	valid, err := database.Connection.DoesKeyExist(key)
 	if err != nil {
+		log.Println("error validating key:", err)
 		response := ValidateResponse{
 			Success: false,
 			Data: ValidateData{
@@ -50,17 +52,16 @@ var ValidateFunc = func(writer http.ResponseWriter, request *http.Request) {
 		}
 		responsePayload, err := json.Marshal(response)
 		if err != nil {
+			log.Println("error marshalling validate response (validate key):", err)
 			writer.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		writer.WriteHeader(http.StatusOK)
+		writer.WriteHeader(http.StatusBadRequest)
 		_, err = writer.Write(responsePayload)
 		return
 	}
 
-	// check if key is valid
 	if !valid {
-		// return invalid key
 		response := ValidateResponse{
 			Success: false,
 			Data: ValidateData{
@@ -69,33 +70,69 @@ var ValidateFunc = func(writer http.ResponseWriter, request *http.Request) {
 		}
 		responsePayload, err := json.Marshal(response)
 		if err != nil {
+			log.Println("error marshalling validate response (invalid key):", err)
 			writer.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		writer.WriteHeader(http.StatusOK)
+		writer.WriteHeader(http.StatusBadRequest)
 		_, err = writer.Write(responsePayload)
 		return
 	}
-}
 
-func ValidateKey(key string) (bool, error) {
+	// check if the key is disabled or not
 
-	// check if key is in database
-	apiKey, err := database.DoesKeyExist(key)
+	disabled, err := database.Connection.IsKeyDisabled(key)
 	if err != nil {
-		return false, err
-	}
-	if apiKey == nil {
-		return false, errors.New("invalid key")
+		log.Println("error validating key:", err)
+		response := ValidateResponse{
+			Success: false,
+			Data: ValidateData{
+				Error: err.Error(),
+			},
+		}
+		responsePayload, err := json.Marshal(response)
+		if err != nil {
+			log.Println("error marshalling validate response (validate key):", err)
+			writer.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		writer.WriteHeader(http.StatusBadRequest)
+		_, err = writer.Write(responsePayload)
+		return
 	}
 
-	if apiKey.Disabled {
-		return false, errors.New("key is disabled")
+	if disabled {
+		response := ValidateResponse{
+			Success: false,
+			Data: ValidateData{
+				Error: "key disabled",
+			},
+		}
+		responsePayload, err := json.Marshal(response)
+		if err != nil {
+			log.Println("error marshalling validate response (invalid key):", err)
+			writer.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		writer.WriteHeader(http.StatusBadRequest)
+		_, err = writer.Write(responsePayload)
+		return
 	}
 
-	if apiKey.LastGenerated+database.GenerateCooldown > time.Now().Unix() {
-		return false, errors.New("key is on cooldown for " + time.Until(time.Unix(apiKey.LastGenerated+database.GenerateCooldown, 0)).Round(time.Second).String())
+	// key is valid and not disabled
+	response := ValidateResponse{
+		Success: true,
+		Data: ValidateData{
+			Valid: "true",
+		},
 	}
-
-	return true, nil
+	responsePayload, err := json.Marshal(response)
+	if err != nil {
+		log.Println("error marshalling validate response (valid key):", err)
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writer.WriteHeader(http.StatusOK)
+	_, err = writer.Write(responsePayload)
+	return
 }

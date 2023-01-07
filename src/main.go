@@ -15,7 +15,7 @@ import (
 
 var (
 	APIPort          = flag.String("port", "3000", "port to host the api on")
-	GenerateCooldown = flag.Int("cooldown", 300, "cooldown in seconds for generating alts")
+	GenerateCooldown = flag.Int("cooldown", 10, "cooldown in seconds for generating alts")
 	router           chi.Router
 )
 
@@ -46,6 +46,8 @@ func init() {
 		log.Fatal("Error setting up API endpoints: " + err.Error())
 	}
 
+	log.Println("API endpoints initialized")
+
 }
 
 func main() {
@@ -60,18 +62,14 @@ func main() {
 		log.Fatal("Error creating data folder: " + err.Error())
 	}
 
+	log.Println("Data folder created")
+
 	// starts the database connection and sets up the tables
 	err = database.Startup(datapath, *GenerateCooldown)
 	if err != nil {
 		log.Fatal("Error starting up database: " + err.Error())
 	}
-
-	// test creating an api key
-	key, err := database.CreateApiKey("royalty")
-	if err != nil {
-		log.Println("Error creating api key: " + err.Error())
-	}
-	log.Println(*key)
+	log.Println("Database started")
 
 	// start the web api
 	log.Println("Listening for API requests at port " + *APIPort)
@@ -91,7 +89,7 @@ func setupEndpoints() error {
 
 	router.NotFound(func(writer http.ResponseWriter, request *http.Request) {
 		// get the content type from request
-		contentType := request.Header.Get("Content-Type")
+		contentType := request.Header.Get("Accept")
 		// if the content type is application/json, return a json response
 		if contentType == "application/json" {
 			writer.WriteHeader(http.StatusNotFound)
@@ -117,6 +115,10 @@ func setupEndpoints() error {
 	)
 
 	router.Get("/validate", api.ValidateFunc)
+
+	router.Post("/create", api.CreateKeyFunc)
+
+	router.Post("/restock", api.RestockFunc)
 
 	return nil
 }
